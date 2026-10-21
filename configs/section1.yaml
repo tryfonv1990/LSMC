@@ -1,0 +1,120 @@
+# =============================================================================
+# Section 1 — American options & LSMC: all tunable parameters.
+#
+# All settings for the Section 1 script are in this file, not in the code.
+# Change bases, path counts, seeds or parameter values here.
+# If a name is misspelt, loading the file gives an error.
+# =============================================================================
+
+# ------------------------------------------------------------------ shared ---
+# Contract and Monte Carlo settings common to every experiment below.
+common:
+  strike: 40.0            # K
+  rate: 0.06              # r (short rate); LS Table 1 uses 0.06
+  n_paths: 100000         # total paths (half are antithetic when enabled)
+  antithetic: true        # pair Z with -Z for variance reduction
+  exercise_per_year: 50   # Bermudan exercise dates per year (LS use 50)
+
+  # Regression basis for the continuation value. One of:
+  #   laguerre     - constant + 3 weighted Laguerre polynomials (LS default)
+  #   powers       - constant + {S, S^2, S^3}
+  #   powers_deg2  - constant + {S, S^2}  (the paper's 8-path worked example)
+  #   bspline_b6   - cubic B-splines (used for gas storage in Section 4)
+  basis: laguerre
+
+# ------------------------------------------------ 1a. Table 1 reproduction ---
+table1:
+  seed: 20240501
+  # Headline prices use Euler-Maruyama, as the brief requires for Section 1.
+  scheme: euler           # euler | milstein
+  # Also price each point with the bias-free exact log-Euler GBM on the SAME
+  # Brownian increments, so euler_minus_exact is pure Euler bias (no MC noise).
+  compare_exact: true
+  round_decimals: 3
+  # (S0, sigma, T): [paper simulated American value, paper standard error]
+  reference:
+    - {S0: 36, sigma: 0.20, T: 1, value: 4.472, se: 0.010}
+    - {S0: 36, sigma: 0.20, T: 2, value: 4.821, se: 0.012}
+    - {S0: 36, sigma: 0.40, T: 1, value: 7.091, se: 0.020}
+    - {S0: 36, sigma: 0.40, T: 2, value: 8.488, se: 0.024}
+    - {S0: 38, sigma: 0.20, T: 1, value: 3.244, se: 0.009}
+    - {S0: 38, sigma: 0.20, T: 2, value: 3.735, se: 0.011}
+    - {S0: 40, sigma: 0.20, T: 1, value: 2.313, se: 0.009}
+    - {S0: 40, sigma: 0.20, T: 2, value: 2.879, se: 0.010}
+    - {S0: 40, sigma: 0.40, T: 1, value: 5.308, se: 0.018}
+    - {S0: 40, sigma: 0.40, T: 2, value: 6.921, se: 0.022}
+    - {S0: 42, sigma: 0.20, T: 1, value: 1.617, se: 0.007}
+    - {S0: 42, sigma: 0.20, T: 2, value: 2.206, se: 0.010}
+    - {S0: 44, sigma: 0.20, T: 1, value: 1.118, se: 0.007}
+    - {S0: 44, sigma: 0.20, T: 2, value: 1.675, se: 0.009}
+    - {S0: 44, sigma: 0.40, T: 1, value: 3.957, se: 0.017}
+    - {S0: 44, sigma: 0.40, T: 2, value: 5.622, se: 0.021}
+
+# ------------------------------------ 1b. Discretisation-step (dt) study ------
+discretisation:
+  seed: 11
+  S0: 40.0
+  T: 1.0
+  # Fine grid = fine_steps steps over [0, T]. It must be divisible by every entry
+  # in step_days so each coarse grid is an EXACT sub-sample of the fine Brownian
+  # path (nested grids). 210 works for {1,3,5,7}; a coarse "d-day"
+  # grid then has fine_steps/d steps, each summing d consecutive fine increments.
+  fine_steps: 210
+  step_days: [1, 3, 5, 7]
+  sigmas: [0.10, 0.25, 0.40]
+  scheme: euler            # scheme under test (euler)
+  # More paths than common.n_paths: the true bias is small (~1e-3) at low vol, so
+  # I shrink the residual LSMC-regression noise floor to keep each curve smooth.
+  n_paths: 200000
+  round_decimals: 4
+
+# --------------------------------- 1c. Heston sensitivity sweeps --------------
+heston:
+  seed: 2024
+  n_paths: 60000           # override common.n_paths (Heston is heavier)
+  n_steps: 100
+  # Regression state for the continuation value:
+  #   two_factor: false -> spot only (uses common.basis)
+  #   two_factor: true  -> both spot and variance, using basis_2f below
+  # The Heston state is genuinely (S, v); the two-factor basis follows the
+  # Longstaff-Schwartz multi-factor prescription {1, S, S^2, v, v^2, S*v}.
+  two_factor: true
+  basis_2f: poly2d_sv      # 2-D basis name (see lsmc.basis.BASES_2D)
+
+  # Each sweep is evaluated at several MONEYNESS levels (S0 with K held at 1),
+  # not just at-the-money. This is the key to seeing the effects: vol-of-variance
+  # (xi) and spot-vol correlation (rho) act on the skew and tails of the
+  # terminal distribution, which barely move the at-the-money price but shift
+  # in-/out-of-the-money prices. A put at S0<K is in-the-money (ITM), S0>K is OTM.
+  moneyness: [0.85, 1.00, 1.15]     # ITM, ATM, OTM for a put struck at K=1
+
+  # Base case. Design choices that make the sensitivities visible while staying
+  # faithful to the assignment's stated regime:
+  #  * v0 = 0.08^2 is fixed as specified in the brief;
+  #  * theta > v0 (12% vs 8% vol) leaves a GAP for the variance to travel, so
+  #    kappa (the speed of that travel) actually changes the price -- if v0=theta
+  #    there is nothing to mean-revert toward and kappa has no effect;
+  #  * rho is POSITIVE, as the assignment requires (commodities show the inverse
+  #    of the equity leverage effect: volatility rises with price spikes);
+  #  * Feller 2*kappa*theta > xi^2 holds at every sweep point (checked in code).
+  base:
+    S0: 1.0                # overridden by the moneyness axis below
+    K: 1.0
+    r: 0.0
+    v0: 0.0064             # 0.08^2  (fixed by the assignment)
+    kappa: 5.0             # raised from 2.0 so Feller 2*kappa*theta > xi^2 leaves
+                           # room to widen the xi sweep (bound = 2*5*0.0144 = 0.144)
+    theta: 0.0144          # 0.12^2  (> v0, so kappa has a gap to act on)
+    xi: 0.10
+    rho: 0.3               # positive per the assignment
+    T: 1.0
+  # Values to sweep for each parameter (one subplot each). Ranges chosen to span
+  # a realistic band while keeping 2*kappa*theta > xi^2 at every point. With base
+  # kappa=5.0, theta=0.0144 the xi bound is sqrt(0.144)=0.379, so xi up to 0.35 is
+  # safe; the kappa sweep (min 0.5) keeps xi=0.10 => bound 0.0144 > 0.01, also OK.
+  sweeps:
+    kappa: [0.5, 1.0, 2.0, 4.0, 5.0, 8.0]      # slow -> fast; includes base 5.0
+    theta: [0.0064, 0.0100, 0.0144, 0.0196, 0.0256]  # 8% -> 16% long-run vol
+    xi:    [0.05, 0.10, 0.15, 0.25, 0.32, 0.35] # includes base 0.10; max 0.35 < Feller bound 0.379
+    rho:   [0.0, 0.3, 0.5, 0.7, 0.9]           # positive correlation range
+  round_decimals: 4

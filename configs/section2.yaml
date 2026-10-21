@@ -1,0 +1,74 @@
+# =============================================================================
+# Section 2 — Control variates for American options: all tunable parameters.
+#
+# All settings for the Section 2 script are in this file, not in the code.
+# Change rates, path counts, seeds or parameter values here.
+# If the basis name is misspelt, loading the file gives an error.
+#
+# The assignment sets all rates to zero for this section. At r = 0 there is no
+# gain from exercising a put early, so the American and European puts have about
+# the same value and the BAW premium is close to zero. The control variate works
+# well here (correlation 0.87-0.92, variance 4-6x lower). As an extra check, I also
+# run r = 0.06 (as in Table 1), where early exercise has some value.
+# =============================================================================
+
+# ------------------------------------------------------------------ shared ---
+common:
+  strike: 40.0            # K (same strike scale as Section 1 Table 1)
+  n_paths: 100000         # total paths (half are antithetic when enabled)
+  antithetic: true        # pair Z with -Z for variance reduction
+  days_per_year: 252      # one-day time step => n_steps = round(T * days_per_year)
+  rates:                  # r = 0 is mandated; 0.06 added to show a real premium
+    - 0.0                 #   mandated: American = European (degenerate CV)
+    - 0.06                #   supplementary: non-zero early-exercise premium
+  basis: laguerre         # continuation-value regression basis (LS default)
+
+# ---------------------------- 2a. Correlation & variance-reduction vs vol ----
+correlation:
+  seed: 202
+  S0: 40.0                # at-the-money (S0 = K) for the correlation study
+  T: 1.0                  # one-year American put
+  # Lognormal vols to sweep for the correlation and variance-reduction curves.
+  sigmas: [0.10, 0.20, 0.30, 0.40, 0.50]
+  n_paths: 100000
+  round_decimals: 4
+
+# ------------------------------------- 2b. BAW error, with vs without CV -----
+baw_error:
+  seed: 203
+  S0: 40.0
+  T: 0.0833333            # one month = 1/12 year (assignment: one-month puts)
+  # The exact vol set the assignment names for the BAW error plot.
+  sigmas: [0.05, 0.10, 0.20, 0.30]
+  n_paths: 100000
+  round_decimals: 4
+
+# ------------------------------------------------ 2c. Gamma profile ----------
+gamma:
+  seed: 204
+  T: 0.0833333            # one-month options, same horizon as the BAW study
+  # Spot grid spanning ITM -> OTM around K = 40 (moneyness via S0 / K).
+  spots: [30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50]
+  sigmas: [0.10, 0.20, 0.30]   # gamma profile at a few vols
+  bump_h: 0.5             # absolute spot bump for the central difference
+  n_paths: 40000          # fewer paths: CRN already kills most of the noise
+  n_batches: 12           # independent batches -> gamma-estimator variance
+  round_decimals: 6
+
+# --------- appendix: numerical proof that American = European at r = 0 -------
+# Prices the American put by LSMC at r = 0 across (sigma, T) and compares with
+# the closed-form Black-Scholes European and BAW values, showing the difference
+# is within Monte Carlo error (no early-exercise premium at zero rate).
+appendix:
+  seed: 777
+  S0: 40.0
+  # (sigma, T) cases spanning short/long maturities and low/high vol.
+  cases:
+    - {sigma: 0.10, T: 0.5}
+    - {sigma: 0.20, T: 0.5}
+    - {sigma: 0.20, T: 1.0}
+    - {sigma: 0.30, T: 1.0}
+    - {sigma: 0.40, T: 1.0}
+    - {sigma: 0.40, T: 2.0}
+  n_paths: 100000
+  round_decimals: 4

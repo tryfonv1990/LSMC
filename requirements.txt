@@ -1,0 +1,9 @@
+# Exact versions used to produce the results in results/ (Python 3.14). With
+# these, a rerun reproduces every table and figure exactly; newer versions give
+# the same results up to rounding in the last digit.
+numpy==2.3.4
+scipy==1.17.0
+matplotlib==3.11.2
+pandas==2.3.3
+pyyaml==6.0.3
+pytest==9.1.1

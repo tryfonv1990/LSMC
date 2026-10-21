@@ -1,0 +1,83 @@
+# =============================================================================
+# Section 3 — Convergence of the SDE: all editable parameters.
+#
+# All settings for the Section 3 script are in this file, not in the code.
+# Change schemes, path counts, seeds or grids here.
+# If the basis name is misspelt, loading the file gives an error.
+#
+# Section 3 studies the TWO independent sources of LSMC estimator error:
+#   * variance  -- Monte Carlo noise, falls like 1/sqrt(n_paths);
+#   * bias      -- time-discretisation error of the Euler-Maruyama SDE solver,
+#                  which the higher-order Milstein scheme reduces.
+# I benchmark against the Barone-Adesi-Whaley (1987) analytic American value,
+# exactly as the assignment asks ("subtract LSMC Euler from the BAW value").
+# =============================================================================
+
+# ------------------------------------------------------------------ shared ---
+common:
+  strike: 40.0            # K
+  rate: 0.06              # r; a non-zero rate gives a real early-exercise premium
+  antithetic: true        # pair Z with -Z for variance reduction
+  basis: laguerre         # continuation-value regression basis (LS default)
+
+# ------------------------------- 3a. Bias-variance decomposition (GBM) -------
+# Illustrates error = bias + noise: at a FIXED coarse step I hold the exercise
+# grid constant and vary only the path count, so the variance shrinks (1/sqrt N)
+# while the discretisation bias stays put -- the curve flattens to a bias floor.
+bias_variance:
+  seed: 301
+  S0: 40.0
+  sigma: 0.40             # high vol -> larger, clearly visible discretisation bias
+  T: 1.0
+  n_steps: 50             # coarse fixed grid (also the Bermudan exercise dates)
+  # Path counts spanning the assignment's 10,000 -> 100,000 range.
+  path_counts: [10000, 20000, 40000, 70000, 100000]
+  n_repeats: 20           # independent runs per point -> split bias vs variance
+  round_decimals: 4
+
+# --------------------- 3b. GBM: Euler vs Milstein error vs BAW ---------------
+# Same coarse grid, both schemes, error measured against the BAW analytic value
+# across the path-count range. Milstein's smaller bias => a lower error floor.
+gbm_convergence:
+  seed: 302
+  S0: 40.0
+  sigma: 0.40
+  T: 1.0
+  n_steps: 25             # deliberately coarse so the Euler bias is visible
+  path_counts: [10000, 20000, 40000, 70000, 100000]
+  schemes: [euler, milstein]
+  round_decimals: 4
+
+# ------------------- 3c. Heston: Euler vs Milstein vs fine grid --------------
+# No closed form for the American put under Heston, so the reference is a
+# high-resolution (fine-step) simulation. I compare coarse Euler and coarse
+# Milstein against it; Milstein's CIR-variance correction shrinks the bias.
+#
+# Two regimes are run to show WHEN Milstein matters. My simulator uses exact
+# log-Euler on S, so only the CIR variance leg is discretised -- and the
+# Milstein correction there only bites when the variance process is ROUGH, i.e.
+# high vol-of-variance xi. At the assignment's mild parameters the two schemes
+# are near-identical; at the stress parameters (large xi) Milstein clearly wins.
+heston_convergence:
+  seed: 303
+  S0: 1.0                 # Heston base uses S0 = 1 (assignment normalisation)
+  K: 1.0
+  r: 0.06
+  rho: 0.3                # positive per the assignment
+  T: 1.0
+  coarse_steps: 10        # coarse grid under test (Euler & Milstein)
+  fine_steps: 400         # high-resolution reference grid (both schemes agree here)
+  # Path-count sweep (assignment: "different numbers of paths", 10k -> 100k). At
+  # each count the coarse runs and the fine reference share ONE Brownian motion
+  # (coarse increments = sums of fine blocks) and the same paths; the reference
+  # may only exercise on the coarse dates. fine_steps must divide by coarse_steps.
+  path_counts: [10000, 20000, 40000, 70000, 100000]
+  schemes: [euler, milstein]
+  round_decimals: 5
+  # Two parameter regimes. base = my Section-1 base case (mild vol-of-vol;
+  # the assignment fixes only v0, rho>0, mu=0 and 2*kappa*theta > xi^2, NOT xi
+  # itself, so xi=0.10 is my choice). stress = large xi where the CIR variance
+  # leg is rough and Milstein's gain becomes visible.
+  regimes:
+    - {name: base,   v0: 0.0064, kappa: 2.0, theta: 0.0144, xi: 0.10}
+    - {name: stress, v0: 0.04,   kappa: 2.0, theta: 0.04,   xi: 0.60}

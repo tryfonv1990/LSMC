@@ -1,0 +1,50 @@
+# =============================================================================
+# Section 4 - Natural gas storage valuation (Boogert & de Jong 2008).
+#
+# All settings for the Section 4 script are in this file, not in the code.
+# Change the price process, contract terms, grid or path counts here.
+# If the basis name is misspelt, loading the file gives an error.
+#
+# Two blocks: price (the day-ahead spot SDE, eq. 22) and storage (the
+# contract and dynamic-program settings, Exhibit 1 and eqs. 10-21).
+# =============================================================================
+
+# ----------------------------------------- 4a. Day-ahead price process ------
+# One-factor Schwartz mean-reverting log-price (paper eq. 22):
+#   dS/S = kappa[mu(t) - ln S] dt + sigma dW,  simulated in daily steps.
+# The assignment lets me use mu(t) as a CONSTANT, so the long-run log-price
+# level is flat (no seasonal forward curve). sigma and kappa are the brief's
+# "high volatility" case. S0 starts at exp(mu) ~ 20.1; the log-price reverts to
+# mu - sigma^2/(2 kappa) (paper eq. 23), so the long-run mean price is
+# exp(mu - sigma^2/(4 kappa)) ~ 19.2 EUR/MWh.
+price:
+  seed: 401
+  kappa: 0.05             # daily mean-reversion speed (brief)
+  sigma: 0.0945           # daily volatility 9.45% (brief, high-vol case)
+  mu: 3.0                 # constant mu; start price exp(3) ~ 20.1 EUR/MWh
+  n_days: 365             # 7 July -> 30 June: one-year daily grid (T = 365)
+  n_paths: 10000          # M = 10,000 paths (brief)
+  antithetic: true        # antithetic sampling (paper uses it)
+
+# --------------------------------------------- 4b/4c. Storage contract ------
+# Standard contract from Exhibit 1 (volumes in MWh). Rates and spreads are zero
+# (a1=a2=b1=b2=delta=0), so inject cost = withdraw profit = spot price S(t).
+storage:
+  basis: bspline_b6       # b6 B-spline basis (Exhibit 6 preference)
+  # --- physical contract limits (Exhibit 1) ---
+  v_min: 0                # minimum inventory (MWh)
+  v_max: 250000           # working capacity (MWh)
+  v_start: 100000         # inventory at inception
+  v_end: 100000           # required inventory at expiry (enforced by penalty)
+  max_inject: 2500        # i_max: max injected volume per day (MWh), raises inventory
+  max_withdraw: 7500      # |i_min|: max withdrawn volume per day (MWh), lowers inventory
+  # --- dynamic-program discretisation ---
+  alpha: 2500             # inventory grid step (MWh); paper value 2500 (p. 89, "Standard Storage Contract").
+                          # Capacity, start/end volumes and daily rates must be multiples of alpha
+                          # (e.g. 2500, 1250, 500, 250); smaller alpha = more actions per day, slower run.
+  penalty: 1.0            # EUR/MWh per unit of end-volume shortfall, scaled by price
+  # --- 4c. convergence study: storage value vs number of paths ---
+  path_counts: [50, 500, 5000, 10000]   # paper shows value is stable even at 50
+  n_runs: 10              # independent runs per path count -> mean & std error
+  hist_bins: 40           # bars in the Exhibit-3-style per-path value histogram (4c right panel)
+  round_decimals: 0       # storage values are large (EUR), report whole euros
